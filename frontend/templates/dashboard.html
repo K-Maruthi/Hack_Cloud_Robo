@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>S4 Unit Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+<body>
+
+    <nav class="sidebar-nav">
+        <div class="nav-logo">S4</div>
+        <a href="/" class="nav-item"><i class='bx bx-grid-alt'></i></a>
+        <a href="#" class="nav-item active"><i class='bx bx-desktop'></i></a>
+        <div class="logout"><a href="#" class="nav-item logout"><i class='bx bx-log-out'></i></a></div>
+    </nav>
+
+    <div class="main-wrapper">
+        <header>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <h1>UNIT: <span style="font-weight:400; color:#94a3b8;">{{ robot_id }}</span></h1>
+                <div id="zone-badge" class="version-tag">CONNECTING...</div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button id="mode-btn" onclick="sendCommand('TOGGLE_MODE')" class="version-tag" style="cursor:pointer; background:#1e293b; color:#fff;">SWITCH MODE</button>
+                <div id="connection-status" class="status-badge offline"><span class="status-dot"></span> DISCONNECTED</div>
+            </div>
+        </header>
+
+        <div class="tabs-header">
+            <button class="tab-btn active" onclick="openTab('tab-mission')">MISSION CONTROL</button>
+            <button class="tab-btn" onclick="openTab('tab-vision')">SPATIAL SENSORS</button>
+            <button class="tab-btn" onclick="openTab('tab-systems')">HARDWARE & POWER</button>
+        </div>
+
+        <!-- TAB 1: MISSION -->
+        <div id="tab-mission" class="tab-content active">
+            <div class="dashboard-grid">
+                <div class="camera-container">
+                    <img id="camera-feed" src="" alt="NO SIGNAL" style="width: 100%; height: 100%; object-fit: contain;">
+                    <button onclick="sendCommand('CAM_SWITCH')" style="position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.7); border: 1px solid #3b82f6; color: #3b82f6; padding: 5px 10px; cursor: pointer; font-family: monospace; font-size: 10px;">SWITCH SENSOR</button>
+                </div>
+                
+                <aside class="metrics-panel">
+                    <div class="metric-card" style="border-top-color: #3b82f6;">
+                        <div class="metric-label">OPERATOR CONTROLS</div>
+                        <div class="controller-layout">
+                            <!-- D-PAD -->
+                            <div class="d-pad-grid">
+                                <div></div>
+                                <button class="d-btn" onmousedown="sendCommand('MOVE_FORWARD')" onmouseup="sendCommand('HALT_MOVE')"><i class='bx bx-chevron-up'></i></button>
+                                <div></div>
+                                <button class="d-btn" onmousedown="sendCommand('TURN_LEFT')" onmouseup="sendCommand('HALT_MOVE')"><i class='bx bx-chevron-left'></i></button>
+                                <div class="d-center"><div class="d-dot"></div></div>
+                                <button class="d-btn" onmousedown="sendCommand('TURN_RIGHT')" onmouseup="sendCommand('HALT_MOVE')"><i class='bx bx-chevron-right'></i></button>
+                                <div></div>
+                                <button class="d-btn" onmousedown="sendCommand('MOVE_BACKWARD')" onmouseup="sendCommand('HALT_MOVE')"><i class='bx bx-chevron-down'></i></button>
+                                <div></div>
+                            </div>
+                            <!-- ACTIONS -->
+                            <div class="action-grid">
+                                <button class="act-btn btn-y" onclick="sendCommand('ACTION_WAVE')">WAVE</button>
+                                <button class="act-btn btn-b" onclick="sendCommand('ACTION_CROUCH')">DUCK</button>
+                                <button class="act-btn btn-a" onclick="sendCommand('ACTION_GRAB')">GRAB</button>
+                                <button class="act-btn btn-x" onclick="sendCommand('START')">RESET</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card" style="border-top-color: #ef4444;">
+                        <button onclick="sendCommand('STOP')" class="ctrl-btn stop" style="width:100%">EMERGENCY STOP</button>
+                    </div>
+                </aside>
+            </div>
+        </div>
+
+        <!-- TAB 2: SPATIAL -->
+        <div id="tab-vision" class="tab-content">
+            <div class="dashboard-grid">
+                <div class="chart-container">
+                    <h3 class="panel-title">LIDAR MAP</h3>
+                    <canvas id="spatialCanvas" width="800" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: HARDWARE (Restored) -->
+        <div id="tab-systems" class="tab-content">
+            <div class="dashboard-grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <div class="metric-card">
+                        <h3 class="panel-title">BATTERY CELLS (H4)</h3>
+                        <div class="cell-grid" id="cell-grid"></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="panel-title">JOINT ANGLES (H3)</h3>
+                        <div style="height: 200px;"><canvas id="jointChart"></canvas></div>
+                    </div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <div class="metric-card">
+                        <h3 class="panel-title">SENSORS (H2)</h3>
+                        <div class="tactile-grid" id="tactile-grid"></div>
+                        <div class="data-grid five-col" id="force-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- API ---
+        async function sendCommand(action) {
+            await fetch(`/api/command/${"{{ robot_id }}"}`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action})
+            });
+        }
+
+        // --- CHARTS ---
+        Chart.defaults.color = '#64748b'; Chart.defaults.borderColor = 'rgba(255,255,255,0.05)';
+        const jointChart = new Chart(document.getElementById('jointChart'), {
+            type: 'bar', data: {labels: Array(32).fill(''), datasets: [{label: 'J', backgroundColor: '#3b82f6', data: Array(32).fill(0)}]},
+            options: {responsive:true, maintainAspectRatio:false, scales:{y:{min:-60, max:60}}, plugins:{legend:{display:false}}}
+        });
+
+        // --- TABS ---
+        function openTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el=>el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+            if(tabId === 'tab-systems') { setTimeout(() => { jointChart.resize(); }, 50); }
+        }
+
+        // --- MAP ---
+        const sCtx = document.getElementById('spatialCanvas').getContext('2d');
+        const W=800, H=400;
+        function drawMap(pose, lidar) {
+            sCtx.clearRect(0,0,W,H); sCtx.fillStyle = '#0b0f13'; sCtx.fillRect(0,0,W,H);
+            const SCALE = 20; const OX = W/2 - (10*SCALE); const OY = H/2 - (10*SCALE);
+            
+            // Walls
+            sCtx.strokeStyle = '#334155'; sCtx.lineWidth = 4; sCtx.strokeRect(OX, OY, 20*SCALE, 20*SCALE);
+            
+            // Robot
+            const rx = OX + (pose.x * SCALE); const ry = OY + (pose.y * SCALE);
+            sCtx.save(); sCtx.translate(rx, ry); sCtx.rotate(pose.heading * Math.PI / 180);
+            sCtx.fillStyle = '#3b82f6'; sCtx.beginPath(); sCtx.moveTo(10,0); sCtx.lineTo(-5,5); sCtx.lineTo(-5,-5); sCtx.fill();
+            sCtx.restore();
+
+            // Lidar
+            if(lidar) {
+                sCtx.fillStyle = '#10b981';
+                lidar.forEach((dist, i) => {
+                    if(dist < 19 && i%2===0) {
+                        const a = (pose.heading + i * 2) * (Math.PI / 180); // 2 deg steps
+                        const lx = rx + Math.cos(a) * (dist * SCALE);
+                        const ly = ry + Math.sin(a) * (dist * SCALE);
+                        sCtx.fillRect(lx, ly, 2, 2);
+                    }
+                });
+            }
+        }
+
+        // --- WEBSOCKET ---
+        const ws = new WebSocket("ws://" + window.location.host + "/ws/dashboard");
+        const statusBadge = document.getElementById('connection-status');
+        const modeBtn = document.getElementById('mode-btn');
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            statusBadge.innerHTML = '<span class="status-dot"></span> ONLINE'; statusBadge.className = "status-badge online";
+
+            if(msg.message_type === "telemetry") {
+                // Update Hardware Tab
+                if(msg.power.cell_voltages) {
+                    const cellContainer = document.getElementById('cell-grid');
+                    cellContainer.innerHTML = '';
+                    msg.power.cell_voltages.forEach((v, i) => {
+                        cellContainer.innerHTML += `<div class="cell-box"><div class="cell-id">CELL ${i+1}</div><div class="cell-val">${v}V</div></div>`;
+                    });
+                }
+                if(msg.sensors) {
+                    const tacContainer = document.getElementById('tactile-grid');
+                    tacContainer.innerHTML = '';
+                    msg.sensors.tactile.forEach(val => { tacContainer.innerHTML += `<div class="tactile-dot ${val ? 'active':''}"></div>`; });
+                    
+                    const forceContainer = document.getElementById('force-grid');
+                    forceContainer.innerHTML = '';
+                    msg.sensors.force.forEach(val => { forceContainer.innerHTML += `<div class="data-item"><span class="data-val">${val}</span></div>`; });
+                    
+                    if(msg.sensors.lidar_scan) window.latestLidar = msg.sensors.lidar_scan;
+                }
+            }
+
+            if(msg.message_type === "vision") {
+                document.getElementById('zone-badge').innerText = msg.current_zone;
+                if(msg.current_zone === "MANUAL") {
+                    modeBtn.innerText = "SWITCH TO AUTO"; modeBtn.style.background = "#f59e0b";
+                } else {
+                    modeBtn.innerText = "SWITCH TO MANUAL"; modeBtn.style.background = "#10b981";
+                }
+                if(msg.robot_pose && window.latestLidar) drawMap(msg.robot_pose, window.latestLidar);
+            }
+
+            if(msg.message_type === "kinematics") {
+                jointChart.data.datasets[0].data = msg.h3_mobility.joint_angles;
+                jointChart.update();
+            }
+
+            if(msg.message_type === "camera_feed") {
+                document.getElementById('camera-feed').src = msg.frame;
+            }
+        };
+    </script>
+</body>
+</html>
